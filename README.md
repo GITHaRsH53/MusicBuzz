@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎵 MusicBuzz – Spotify Playlist Generator  
 
-## Getting Started
+MusicBuzz is a **Next.js web app** that lets users create Spotify playlists instantly from a simple text list or CSV upload.  
+No more adding songs one by one — just upload or paste, log in with Spotify, and generate your playlist in one click.  
 
-First, run the development server:
+---
 
+## ✨ Features  
+- 🔑 **Spotify OAuth Login** using **NextAuth.js** (secure login, token refresh).  
+- 📄 **Text / CSV Input** – paste songs or upload CSV files (`song, artist`).  
+- 🧠 **Fuzzy Matching** with **Spotify Search API** to handle messy input.  
+- 🏷️ **ISRC Deduplication** – stores matched ISRCs in memory to reduce API calls and avoid duplicates.  
+- 📊 **Preview & Edit** – view parsed tracks before creating playlists.  
+- 📥 **Download Reports** – export CSV with `found / not found / duplicates`.  
+- 🚀 **Deployed on Vercel** – accessible instantly, no installation required.  
+
+---
+
+## 🛠️ Tech Stack  
+- **Frontend:** Next.js, React, Bootstrap 
+- **Auth:** NextAuth.js (Spotify Provider, JWT, refresh tokens)  
+- **Parsing:** PapaParse (CSV), FileSaver.js (downloads)  
+- **Backend:** Next.js API Routes, Spotify Web API  
+- **Deployment:** Vercel  
+
+---
+
+## 🚀 Getting Started  
+
+### 1. Clone the repo  
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone https://github.com/GITHaRsH53/MusicBuzz.git
+cd MusicBuzz
