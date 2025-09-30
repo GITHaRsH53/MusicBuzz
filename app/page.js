@@ -203,7 +203,7 @@ export default function Home() {
       )}
 
       {/* -------- Step 2: CSV upload or paste text -------- */}
-      <h3 className="mb-3">🎶 Step 2: CSV Upload (or paste text)</h3>
+      <h3 className="mb-3">🎶 CSV Upload (or paste text)</h3>
 
       <div className="mb-4">
         <label className="form-label">Upload CSV (columns: song, artist)</label>

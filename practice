@@ -1,0 +1,202 @@
+Awesome — Option B (separate Lovable front-end + your existing Next.js back-end) is totally doable on Vercel’s free Hobby tier.
+
+Below is a step-by-step that keeps your current backend untouched functionally and adds just enough CORS + “remote login” to let the Lovable SPA talk to it.
+
+What we’re building
+
+Back-end: your current Next.js project (already on Vercel) at
+https://musicbuzz-sigma.vercel.app ← (use your real backend domain)
+
+Front-end: the Lovable Vite project (new Vercel project) at
+https://<your-lovable-app>.vercel.app
+
+Front-end calls backend APIs via absolute URLs and sends cookies with
+credentials: "include".
+
+0) Confirm backend env (already mostly done)
+
+On your Next.js backend (MusicBuzz on Vercel):
+
+NEXTAUTH_URL = https://musicbuzz-sigma.vercel.app
+
+SPOTIFY_CLIENT_ID
+
+SPOTIFY_CLIENT_SECRET
+
+NEXTAUTH_SECRET
+
+Add one more:
+ALLOWED_ORIGIN = https://<your-lovable-app>.vercel.app
+(set this after you deploy the Lovable site; for now you can put a placeholder)
+
+Redeploy after updating envs.
+
+1) Add CORS to your backend API routes
+
+Your Lovable SPA will be on a different domain. We must allow that origin and send credentials.
+
+In each API route that the SPA will call (e.g. /app/api/spotify/search/route.js and /app/api/spotify/playlist/route.js) add a tiny CORS helper.
+
+app/api/spotify/search/route.js (example pattern)
+
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+
+function withCORS(res) {
+  res.headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  res.headers.set("Access-Control-Allow-Credentials", "true");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  return res;
+}
+
+// Preflight for browsers
+export function OPTIONS() {
+  return withCORS(new Response(null, { status: 204 }));
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.json();          // { rows: [...] }
+    // ... your existing logic that queries Spotify & builds matches ...
+    const payload = { results, summary };
+
+    return withCORS(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+  } catch (err) {
+    return withCORS(
+      new Response(JSON.stringify({ error: String(err?.message || err) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+  }
+}
+
+
+Repeat the same CORS wrapper for /api/spotify/playlist (and any other route the SPA will call).
+
+You don’t need CORS on NextAuth’s /api/auth/* endpoints; we’ll redirect to them.
+
+2) Deploy the Lovable project as a new Vercel project
+
+From the Lovable folder:
+
+# if not already a git repo
+git init
+git add .
+git commit -m "Lovable UI first commit"
+# push to GitHub, then in Vercel "Add New Project" and select this repo
+
+
+In Vercel → Project → Settings → Environment Variables for the Lovable front-end add:
+
+VITE_API_BASE = https://musicbuzz-sigma.vercel.app ← your backend base URL
+
+VITE_CALLBACK_URL = https://<your-lovable-app>.vercel.app/ ← where to return after login
+
+Deploy.
+
+3) Update Lovable fetches + login/logout
+
+In Lovable, create a tiny API helper:
+
+src/lib/api.ts (or .js)
+
+export const API_BASE = import.meta.env.VITE_API_BASE;       // e.g. https://musicbuzz-sigma.vercel.app
+export const CALLBACK_URL = import.meta.env.VITE_CALLBACK_URL; // e.g. https://lovable-frontend.vercel.app/
+
+export async function apiPost(path: string, body: any) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",  // <— send NextAuth cookies cross-site
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `Request failed: ${res.status}`);
+  return data;
+}
+
+
+Wherever Lovable was doing:
+
+fetch("/api/spotify/search", { ... })
+
+
+replace with:
+
+import { apiPost } from "@/lib/api";
+const data = await apiPost("/api/spotify/search", { rows });
+
+
+Login / Logout buttons in Lovable (simple links):
+
+import { API_BASE, CALLBACK_URL } from "@/lib/api";
+
+// Login: go to your NextAuth signin page, then come back to SPA
+const loginHref = `${API_BASE}/api/auth/signin?callbackUrl=${encodeURIComponent(CALLBACK_URL)}`;
+
+// Logout (optional callback back to SPA)
+const logoutHref = `${API_BASE}/api/auth/signout?callbackUrl=${encodeURIComponent(CALLBACK_URL)}`;
+
+
+Render as plain <a> buttons:
+
+<a href={loginHref} className="btn">Login with Spotify</a>
+<a href={logoutHref} className="btn">Logout</a>
+
+
+Why links, not fetch?
+NextAuth’s sign-in/out are navigations that set HttpOnly cookies on the backend domain. After login, the browser returns to your SPA with cookies stored for musicbuzz-sigma.vercel.app. Subsequent API requests from the SPA to the backend (with credentials:"include") will now carry those cookies → you’re authenticated.
+
+4) Allow the SPA domain in Spotify (one time)
+
+Inside the Spotify Developer Dashboard for your app:
+
+Redirect URIs should already include your backend callback:
+
+https://musicbuzz-sigma.vercel.app/api/auth/callback/spotify
+
+(Keep your localhost one for dev if you use it.)
+
+Nothing else needed for the SPA domain since it never handles the OAuth callback directly — the backend does.
+
+5) Local development (optional)
+
+Run backend locally on http://127.0.0.1:3000 (as you did before).
+
+Run Lovable on http://127.0.0.1:5173.
+
+In the Lovable .env.local:
+
+VITE_API_BASE=http://127.0.0.1:3000
+VITE_CALLBACK_URL=http://127.0.0.1:5173/
+
+
+In the backend .env.local:
+
+ALLOWED_ORIGIN=http://127.0.0.1:5173
+NEXTAUTH_URL=http://127.0.0.1:3000
+
+
+Add the local Spotify Redirect URI if you test OAuth locally:
+
+http://127.0.0.1:3000/api/auth/callback/spotify
+
+6) Quick checklist
+
+ Backend has ALLOWED_ORIGIN set to the deployed Lovable URL.
+
+ API routes add CORS headers and an OPTIONS handler.
+
+ Lovable fetches use VITE_API_BASE and credentials: "include".
+
+ Login button links to ${API_BASE}/api/auth/signin?callbackUrl=....
+
+ Spotify Redirect URI points to backend callback only.
+
+ NEXTAUTH_URL equals your backend domain in Vercel.
