@@ -153,43 +153,59 @@
 // pick the best match, mark duplicates by ISRC, and return a report.
 // ---- UPDATED: adds CORS so Lovable frontend can call this cross-origin.
 
+// app/api/spotify/search/route.js
+// Purpose: receive [{song, artist}] rows, search Spotify for each,
+// pick the best match, mark duplicates by ISRC, and return a report.
+// UPDATED: robust CORS for Lovable SPA calls.
+
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-/** Build CORS headers for a given request origin (Lovable SPA). */
-function corsHeaders(req) {
-  // Allow exactly the Lovable domain (comma-separate to allow more than one)
-  const allowed = (process.env.ALLOWED_ORIGIN || "").split(",").map(s => s.trim());
-  const origin = req.headers.get("origin") || "";
-  // If the calling origin is in our allow-list, reflect it; otherwise, deny.
-  const allowOrigin = allowed.includes(origin) ? origin : allowed[0] || "";
+/* ---------------- CORS helpers ---------------- */
 
+/** Reflect allowed origin based on env + request Origin header */
+function resolveAllowedOrigin(req) {
+  // ALLOWED_ORIGIN can be comma-separated (dev + prod)
+  const list = String(process.env.ALLOWED_ORIGIN || "http://127.0.0.1:5173")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const reqOrigin = req.headers.get("origin") || "";
+  if (list.includes("*")) return reqOrigin || list[0];
+  return list.includes(reqOrigin) ? reqOrigin : list[0];
+}
+
+function corsHeaders(origin) {
   return {
-    "Access-Control-Allow-Origin": allowOrigin,      // the Lovable domain
-    "Access-Control-Allow-Credentials": "true",      // send cookies (NextAuth)
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Vary": "Origin",                                // caches separate per origin
+    Vary: "Origin",
   };
 }
 
-/** Small helper: wrap a JSON payload with CORS headers. */
 function jsonWithCORS(req, body, init = {}) {
+  const origin = resolveAllowedOrigin(req);
   const res = NextResponse.json(body, init);
-  const headers = corsHeaders(req);
-  Object.entries(headers).forEach(([k, v]) => res.headers.set(k, v));
+  Object.entries(corsHeaders(origin)).forEach(([k, v]) => res.headers.set(k, v));
   return res;
 }
 
-/** Respond to CORS preflight from the browser. */
 export function OPTIONS(req) {
-  const res = new NextResponse(null, { status: 204 });
-  const headers = corsHeaders(req);
-  Object.entries(headers).forEach(([k, v]) => res.headers.set(k, v));
-  return res;
+  const origin = resolveAllowedOrigin(req);
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders(origin),
+      "Content-Length": "0",
+    },
+  });
 }
 
-/** Call Spotify Web API with the user's access token (from NextAuth JWT). */
+/* --------------- Spotify helpers --------------- */
+
 async function spFetch(path, accessToken) {
   const res = await fetch(`https://api.spotify.com/v1${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -201,52 +217,59 @@ async function spFetch(path, accessToken) {
   return json;
 }
 
-/** Pick a “best” track from Spotify results with simple heuristics. */
 function pickBest(items, wantedSong, wantedArtist) {
   if (!items?.length) return null;
   const norm = (s = "") => s.toLowerCase().trim();
   const ws = norm(wantedSong);
   const wa = norm(wantedArtist);
 
+  // 1) Exact title + exact artist
   const exact = items.find(
-    t => norm(t.name) === ws && t.artists.some(a => norm(a.name) === wa)
+    (t) => norm(t.name) === ws && t.artists.some((a) => norm(a.name) === wa)
   );
   if (exact) return exact;
 
+  // 2) Title contains + (optional) artist contains
   const loose = items.find(
-    t => norm(t.name).includes(ws) && (wa ? t.artists.some(a => norm(a.name).includes(wa)) : true)
+    (t) =>
+      norm(t.name).includes(ws) &&
+      (wa ? t.artists.some((a) => norm(a.name).includes(wa)) : true)
   );
   if (loose) return loose;
 
+  // 3) First result fallback
   return items[0];
 }
 
-/** Handle POST /api/spotify/search (called by Lovable via fetch(..., { credentials:'include' })) */
+/* ------------------ Route: POST ----------------- */
+
 export async function POST(req) {
   try {
-    // 1) Verify user is logged in and get Spotify accessToken from NextAuth JWT cookie
+    // 1) Ensure user is authenticated via NextAuth (cookie)
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
     if (!token?.accessToken) {
       return jsonWithCORS(req, { error: "Not authenticated" }, { status: 401 });
     }
 
-    // 2) Parse input rows
+    // 2) Parse incoming rows
     const { rows } = await req.json();
     if (!Array.isArray(rows)) {
       return jsonWithCORS(req, { error: "rows must be an array" }, { status: 400 });
     }
 
-    const seenISRC = new Set(); // dedupe by ISRC across rows
+    const seenISRC = new Set();
     const results = [];
 
-    // 3) For each row, search Spotify and record best match
+    // 3) Search Spotify for each row
     for (const row of rows) {
       const song = (row.song || "").trim();
       const artist = (row.artist || "").trim();
 
       let q;
       if (song && artist) {
-        q = `q=track:${encodeURIComponent(song)}%20artist:${encodeURIComponent(artist)}&type=track&limit=5`;
+        q = `q=track:${encodeURIComponent(song)}%20artist:${encodeURIComponent(
+          artist
+        )}&type=track&limit=5`;
       } else {
         const qLine = song || artist;
         q = `q=${encodeURIComponent(qLine)}&type=track&limit=5`;
@@ -266,9 +289,9 @@ export async function POST(req) {
             input_artist: artist,
             found: 1,
             duplicate,
-            uri: best.uri, // used later to add tracks to a playlist
+            uri: best.uri,
             matched_song: best.name,
-            matched_artist: best.artists.map(a => a.name).join(", "),
+            matched_artist: best.artists.map((a) => a.name).join(", "),
             isrc,
             id: best.id,
           });
@@ -301,15 +324,15 @@ export async function POST(req) {
       }
     }
 
-    // 4) Build a quick summary
+    // 4) Summary
     const summary = {
       total: results.length,
-      found: results.filter(r => r.found).length,
-      notFound: results.filter(r => !r.found).length,
-      duplicates: results.filter(r => r.duplicate).length,
+      found: results.filter((r) => r.found).length,
+      notFound: results.filter((r) => !r.found).length,
+      duplicates: results.filter((r) => r.duplicate).length,
     };
 
-    // 5) Return everything with CORS headers for Lovable
+    // 5) Respond with CORS headers
     return jsonWithCORS(req, { results, summary });
   } catch (err) {
     return jsonWithCORS(req, { error: String(err?.message || err) }, { status: 500 });
