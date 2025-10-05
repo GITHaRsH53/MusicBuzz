@@ -144,7 +144,7 @@
 // app/api/spotify/search/route.js
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { withCORS, preflight } from "../_utils/cors"; // <-- correct relative path
+import { withCORS, preflight } from "../../_utils/cors"; // <-- correct relative path
 
 // CORS preflight
 export const OPTIONS = preflight;
