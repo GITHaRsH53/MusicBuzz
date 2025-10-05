@@ -1,48 +1,10 @@
+// // app/api/search/route.js
 // import { NextResponse } from "next/server";
 // import { getToken } from "next-auth/jwt";
+// import { withCORS, preflight } from "../../_utils/cors";;
 
-// /* ---------------- CORS helpers ---------------- */
-
-// /** Reflect allowed origin based on env + request Origin header */
-// function resolveAllowedOrigin(req) {
-//   // ALLOWED_ORIGIN can be comma-separated (dev + prod)
-//   const list = String(process.env.ALLOWED_ORIGIN || "http://127.0.0.1:5173")
-//     .split(",")
-//     .map((s) => s.trim())
-//     .filter(Boolean);
-
-//   const reqOrigin = req.headers.get("origin") || "";
-//   if (list.includes("*")) return reqOrigin || list[0];
-//   return list.includes(reqOrigin) ? reqOrigin : list[0];
-// }
-
-// function corsHeaders(origin) {
-//   return {
-//     "Access-Control-Allow-Origin": origin,
-//     "Access-Control-Allow-Credentials": "true",
-//     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-//     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-//     Vary: "Origin",
-//   };
-// }
-
-// function jsonWithCORS(req, body, init = {}) {
-//   const origin = resolveAllowedOrigin(req);
-//   const res = NextResponse.json(body, init);
-//   Object.entries(corsHeaders(origin)).forEach(([k, v]) => res.headers.set(k, v));
-//   return res;
-// }
-
-// export function OPTIONS(req) {
-//   const origin = resolveAllowedOrigin(req);
-//   return new NextResponse(null, {
-//     status: 204,
-//     headers: {
-//       ...corsHeaders(origin),
-//       "Content-Length": "0",
-//     },
-//   });
-// }
+// // CORS preflight for browsers (OPTIONS)
+// export const OPTIONS = preflight;
 
 // /* --------------- Spotify helpers --------------- */
 
@@ -82,19 +44,19 @@
 // }
 
 // /* ------------------ Route: POST ----------------- */
-
-// export async function POST(req) {
+// /** Wrapped with withCORS so the response gets correct CORS headers. */
+// export const POST = withCORS(async (req) => {
 //   try {
 //     // 1) Ensure user is authenticated via NextAuth (cookie)
 //     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 //     if (!token?.accessToken) {
-//       return jsonWithCORS(req, { error: "Not authenticated" }, { status: 401 });
+//       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 //     }
 
 //     // 2) Parse incoming rows
 //     const { rows } = await req.json();
 //     if (!Array.isArray(rows)) {
-//       return jsonWithCORS(req, { error: "rows must be an array" }, { status: 400 });
+//       return NextResponse.json({ error: "rows must be an array" }, { status: 400 });
 //     }
 
 //     const seenISRC = new Set();
@@ -172,24 +134,22 @@
 //       duplicates: results.filter((r) => r.duplicate).length,
 //     };
 
-//     // 5) Respond with CORS headers
-//     return jsonWithCORS(req, { results, summary });
+//     // Return a plain object; withCORS will JSON-ify and add headers.
+//     return { results, summary };
 //   } catch (err) {
-//     return jsonWithCORS(req, { error: String(err?.message || err) }, { status: 500 });
+//     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
 //   }
-// }
+// });
 
-
-// app/api/search/route.js
+// app/api/spotify/search/route.js
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { withCORS, preflight } from "../../_utils/cors";;
+import { withCORS, preflight } from "../_utils/cors"; // <-- correct relative path
 
-// CORS preflight for browsers (OPTIONS)
+// CORS preflight
 export const OPTIONS = preflight;
 
 /* --------------- Spotify helpers --------------- */
-
 async function spFetch(path, accessToken) {
   const res = await fetch(`https://api.spotify.com/v1${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -226,7 +186,7 @@ function pickBest(items, wantedSong, wantedArtist) {
 }
 
 /* ------------------ Route: POST ----------------- */
-/** Wrapped with withCORS so the response gets correct CORS headers. */
+// Return a POJO; withCORS will JSON-ify and add headers.
 export const POST = withCORS(async (req) => {
   try {
     // 1) Ensure user is authenticated via NextAuth (cookie)
@@ -316,7 +276,6 @@ export const POST = withCORS(async (req) => {
       duplicates: results.filter((r) => r.duplicate).length,
     };
 
-    // Return a plain object; withCORS will JSON-ify and add headers.
     return { results, summary };
   } catch (err) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });

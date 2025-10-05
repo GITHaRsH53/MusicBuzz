@@ -1,49 +1,12 @@
+// // app/api/playlist/route.js
 // import { NextResponse } from "next/server";
 // import { getToken } from "next-auth/jwt";
+// import { withCORS, preflight } from "../../_utils/cors";
 
-// /* ---------------- CORS helpers ---------------- */
-
-// function resolveAllowedOrigin(req) {
-//   const list = String(process.env.ALLOWED_ORIGIN || "http://127.0.0.1:5173")
-//     .split(",")
-//     .map((s) => s.trim())
-//     .filter(Boolean);
-
-//   const reqOrigin = req.headers.get("origin") || "";
-//   if (list.includes("*")) return reqOrigin || list[0];
-//   return list.includes(reqOrigin) ? reqOrigin : list[0];
-// }
-
-// function corsHeaders(origin) {
-//   return {
-//     "Access-Control-Allow-Origin": origin,
-//     "Access-Control-Allow-Credentials": "true",
-//     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-//     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-//     Vary: "Origin",
-//   };
-// }
-
-// function jsonWithCORS(req, body, init = {}) {
-//   const origin = resolveAllowedOrigin(req);
-//   const res = NextResponse.json(body, init);
-//   Object.entries(corsHeaders(origin)).forEach(([k, v]) => res.headers.set(k, v));
-//   return res;
-// }
-
-// export function OPTIONS(req) {
-//   const origin = resolveAllowedOrigin(req);
-//   return new NextResponse(null, {
-//     status: 204,
-//     headers: {
-//       ...corsHeaders(origin),
-//       "Content-Length": "0",
-//     },
-//   });
-// }
+// /* -------------- CORS preflight (OPTIONS) --------------- */
+// export const OPTIONS = preflight;
 
 // /* ---------------- Spotify helpers --------------- */
-
 // async function spFetch(path, accessToken, options = {}) {
 //   const res = await fetch(`https://api.spotify.com/v1${path}`, {
 //     ...options,
@@ -67,13 +30,13 @@
 // };
 
 // /* ------------------ Route: POST ----------------- */
-
-// export async function POST(req) {
+// /** Wrapped with withCORS so proper CORS headers are added per request. */
+// export const POST = withCORS(async (req) => {
 //   try {
-//     // 1) Ensure user is authenticated
+//     // 1) Ensure user is authenticated (NextAuth JWT cookie)
 //     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 //     if (!token?.accessToken) {
-//       return jsonWithCORS(req, { error: "Not authenticated" }, { status: 401 });
+//       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 //     }
 
 //     // 2) Validate input
@@ -85,8 +48,7 @@
 //     } = (await req.json()) || {};
 
 //     if (!name || !Array.isArray(uris) || uris.length === 0) {
-//       return jsonWithCORS(
-//         req,
+//       return NextResponse.json(
 //         { error: "name and non-empty uris[] are required" },
 //         { status: 400 }
 //       );
@@ -110,25 +72,27 @@
 //       });
 //     }
 
-//     // 6) Done
-//     return jsonWithCORS(req, {
+//     // 6) Respond (withCORS will attach CORS headers)
+//     return {
 //       id: playlist.id,
 //       url: playlist.external_urls?.spotify,
 //       name: playlist.name,
 //       added: uris.length,
 //       batches: batches.length,
-//     });
+//     };
 //   } catch (err) {
-//     return jsonWithCORS(req, { error: String(err?.message || err) }, { status: 500 });
+//     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
 //   }
-// }
+// });
 
-// app/api/playlist/route.js
+
+
+// app/api/spotify/playlist/route.js
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { withCORS, preflight } from "../../_utils/cors";
+import { withCORS, preflight } from "../_utils/cors"; // <-- correct relative path
 
-/* -------------- CORS preflight (OPTIONS) --------------- */
+// CORS preflight
 export const OPTIONS = preflight;
 
 /* ---------------- Spotify helpers --------------- */
@@ -155,7 +119,7 @@ const chunk = (arr, n = 100) => {
 };
 
 /* ------------------ Route: POST ----------------- */
-/** Wrapped with withCORS so proper CORS headers are added per request. */
+// Return a POJO; withCORS will JSON-ify and add headers.
 export const POST = withCORS(async (req) => {
   try {
     // 1) Ensure user is authenticated (NextAuth JWT cookie)
@@ -197,7 +161,7 @@ export const POST = withCORS(async (req) => {
       });
     }
 
-    // 6) Respond (withCORS will attach CORS headers)
+    // 6) Respond
     return {
       id: playlist.id,
       url: playlist.external_urls?.spotify,
