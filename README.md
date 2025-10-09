@@ -1,33 +1,40 @@
-# 🎵 MusicBuzz – Spotify Playlist Generator  
+# MusicBuzz – Spotify Playlist Generator
 
-MusicBuzz is a **Next.js web app** that lets users create Spotify playlists instantly from a simple text list or CSV upload.  
-No more adding songs one by one — just upload or paste, log in with Spotify, and generate your playlist in one click.  
+Turn long song lists into Spotify playlists in seconds.  
+Paste text or upload a CSV (`song, artist`), we search Spotify, dedupe by **ISRC**, and create a playlist in your account.
 
----
-
-## ✨ Features  
-- 🔑 **Spotify OAuth Login** using **NextAuth.js** (secure login, token refresh).  
-- 📄 **Text / CSV Input** – paste songs or upload CSV files (`song, artist`).  
-- 🧠 **Fuzzy Matching** with **Spotify Search API** to handle messy input.  
-- 🏷️ **ISRC Deduplication** – stores matched ISRCs in memory to reduce API calls and avoid duplicates.  
-- 📊 **Preview & Edit** – view parsed tracks before creating playlists.  
-- 📥 **Download Reports** – export CSV with `found / not found / duplicates`.  
-- 🚀 **Deployed on Vercel** – accessible instantly, no installation required.  
+> **Important policy note (May 15, 2025):**  
+> Spotify now requires apps to be owned by an **organization** for full public approval. Individual developers can still build/test, but **only allow-listed users** (testers) can authenticate.  
+> This project supports that model: the site is public, but only users you allow in the Spotify Dashboard can sign in.
 
 ---
 
-## 🛠️ Tech Stack  
-- **Frontend:** Next.js, React, Bootstrap 
-- **Auth:** NextAuth.js (Spotify Provider, JWT, refresh tokens)  
-- **Parsing:** PapaParse (CSV), FileSaver.js (downloads)  
-- **Backend:** Next.js API Routes, Spotify Web API  
-- **Deployment:** Vercel  
+## Features
+
+- 🔐 **Spotify OAuth** via NextAuth (OAuth 2.0) with session persistence  
+- 🎯 **Track matching** using Spotify Search with **ISRC-based duplicate detection**  
+- 📦 **CSV** upload (PapaParse) + **Paste text** (e.g., “Artist – Song” or “Song by Artist”)  
+- 📜 **Match report CSV** export  
+- 🎵 **Playlist creation** with user-provided name  
+- 🌐 **Single-domain** deployment (frontend + API under one origin) using **Vercel rewrites** → no 3P-cookie / CORS pain
 
 ---
 
-## 🚀 Getting Started  
+## Architecture
 
-### 1. Clone the repo  
-```bash
-git clone https://github.com/GITHaRsH53/MusicBuzz.git
-cd MusicBuzz
+- **Next.js (App Router)**: UI + API routes (`/api/...`)
+- **NextAuth**: Spotify provider
+- **Vercel**: hosting + edge/CDN
+- **Client deps**: `papaparse`, `file-saver`, `lucide-react`
+
+**Why single domain?**  
+All browser requests hit the same origin (e.g., `https://musicbuzzfrontend.vercel.app`) because we proxy `/api/*` to the backend with a Vercel rewrite.  
+Cookies stay first-party → no SameSite=None / 3P cookie issues.
+
+`vercel.json`
+```json
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://musicbuzz-sigma.vercel.app/api/:path*" }
+  ]
+}
